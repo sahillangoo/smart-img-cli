@@ -1,22 +1,32 @@
 {
-	"name": "basic-image-compressor",
-	"version": "1.0.0",
-	"description": "A basic image compressor using sharp",
-	"main": "index.js",
-	"type": "module",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/sahillangoo/image-optimise-sharp.git"
-	},
-	"scripts": {
-		"compress": "node index.mjs"
-	},
-	"keywords": [],
-	"author": "sahillangoo",
-	"license": "ISC",
-	"dependencies": {
-		"chalk": "^5.3.0",
-		"sharp": "^0.33.5"
-	},
-	"packageManager": "pnpm@9.14.2+sha512.6e2baf77d06b9362294152c851c4f278ede37ab1eba3a55fda317a4a17b209f4dbb973fb250a77abc463a341fcb1f17f17cfa24091c4eb319cda0d9b84278387"
+  "name": "image-optimise-sharp",
+  "version": "1.0.0",
+  "description": "High-performance image optimization tool with functional programming approach",
+  "main": "index.mjs",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sahillangoo/image-optimise-sharp.git"
+  },
+  "scripts": {
+    "compress": "node --max-old-space-size=4096 --expose-gc index.mjs",
+    "compress:fast": "node --max-old-space-size=4096 --expose-gc index.mjs -- --fast",
+    "compress:extreme": "node --max-old-space-size=4096 --expose-gc index.mjs -- --extreme",
+    "clean": "node scripts/clean-cache.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "image",
+    "optimization",
+    "compression",
+    "sharp",
+    "webp",
+    "avif"
+  ],
+  "author": "@sahillangoo",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "sharp": "^0.34.5"
+  }
 }

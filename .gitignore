@@ -2,3 +2,4 @@ node_modules
 input/*
 output/*
 !input/pierre-bamin-DO0lQFlzGeM-unsplash.jpg
+.cache/*
