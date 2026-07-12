@@ -20,18 +20,12 @@ import config from "./config.json";
 import { FilenameTracker, createRenamedPath } from "./scripts/rename.mjs";
 import { getSEOMetadata } from "./scripts/ai.mjs";
 
-const runCompress =
-	process.argv.includes("--compress") ||
-	process.argv.includes("--all") ||
-	(!process.argv.includes("--compress") && !process.argv.includes("--rename"));
-const runRename =
-	process.argv.includes("--rename") ||
-	process.argv.includes("--all") ||
-	(!process.argv.includes("--compress") && !process.argv.includes("--rename"));
-
-const forceRename =
-	process.argv.includes("--force-rename") ||
-	process.argv.includes("--rename-force");
+const args = new Set(process.argv);
+const isAll =
+	args.has("--all") || (!args.has("--compress") && !args.has("--rename"));
+const runCompress = isAll || args.has("--compress");
+const runRename = isAll || args.has("--rename");
+const forceRename = args.has("--force-rename") || args.has("--rename-force");
 
 // Overwrite config paths to be absolute based on CWD
 config.paths.input = path.resolve(process.cwd(), config.paths.input);
@@ -60,13 +54,13 @@ const isImageFile = (filePath) => {
 
 const scanDirectory = async (dir) => {
 	try {
-		const dirents = await fs.readdir(dir, { withFileTypes: true });
-		const filePromises = dirents.map((dirent) => {
-			const res = path.resolve(dir, dirent.name);
-			return dirent.isDirectory() ? scanDirectory(res) : res;
+		const dirents = await fs.readdir(dir, {
+			recursive: true,
+			withFileTypes: true,
 		});
-		const files = (await Promise.all(filePromises)).flat();
-		return files.filter(isImageFile);
+		return dirents
+			.filter((d) => !d.isDirectory() && isImageFile(d.name))
+			.map((d) => path.resolve(d.parentPath || d.path, d.name));
 	} catch (err) {
 		if (err.code === "ENOENT") return [];
 		throw err;
@@ -95,7 +89,9 @@ const loadStateAndCache = async () => {
 const processImagePhase1 = async (inputPath, index) => {
 	try {
 		const inputBasename = path.basename(inputPath);
-		const fileHash = Bun.hash(await Bun.file(inputPath).arrayBuffer()).toString(16);
+		const fileHash = Bun.hash(await Bun.file(inputPath).arrayBuffer()).toString(
+			16,
+		);
 
 		let fallbackPath;
 		if (!config.rename.enabled || config.rename.preserveOriginal) {
@@ -198,7 +194,9 @@ const processImagePhase2 = async (fileHash, currentBasename) => {
 			// Cached
 			outputBasename = globalSeoMetadata[fileHash].output;
 			console.log(
-				chalk.gray(`Skipping AI. Found cached rename for ${fileHash.substring(0, 8)}...`),
+				chalk.gray(
+					`Skipping AI. Found cached rename for ${fileHash.substring(0, 8)}...`,
+				),
 			);
 		} else {
 			// Needs AI
@@ -242,7 +240,11 @@ const processImagePhase2 = async (fileHash, currentBasename) => {
 		}
 		return false;
 	} catch (err) {
-		console.error(chalk.red(`AI Rename Error for ${fileHash.substring(0, 8)}...: ${err.message}`));
+		console.error(
+			chalk.red(
+				`AI Rename Error for ${fileHash.substring(0, 8)}...: ${err.message}`,
+			),
+		);
 		return false;
 	}
 };
@@ -354,9 +356,15 @@ const run = async () => {
 						config.paths.state,
 						JSON.stringify(appState, null, 2),
 					);
-					console.log(chalk.cyan(`✅ Saved SEO metadata to ${config.paths.cache}`));
+					console.log(
+						chalk.cyan(`✅ Saved SEO metadata to ${config.paths.cache}`),
+					);
 				}
-				console.log(chalk.magenta(`🤖 Phase 2 Complete! ${newlyRenamed} images were successfully renamed this run.`));
+				console.log(
+					chalk.magenta(
+						`🤖 Phase 2 Complete! ${newlyRenamed} images were successfully renamed this run.`,
+					),
+				);
 			}
 		}
 	} catch (err) {

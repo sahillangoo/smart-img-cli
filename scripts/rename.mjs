@@ -25,17 +25,6 @@ export function toKebabCase(str) {
 }
 
 /**
- * Generate a sequential filename with custom prefix
- * @param {string} customPrefix - The prefix to use (e.g., "project-image")
- * @param {number} index - The sequential number
- * @param {string} extension - The file extension (with dot)
- * @returns {string} - The formatted filename
- */
-export function generateSequentialName(customPrefix, index, extension) {
-	return `${customPrefix}-${index}${extension}`;
-}
-
-/**
  * Create renamed output path based on configuration
  * @param {string} inputPath - Original input file path
  * @param {string} outputDir - Output directory path
@@ -68,11 +57,7 @@ export function createRenamedPath(
 				"Index is required when using customName for sequential numbering",
 			);
 		}
-		const filename = generateSequentialName(
-			renameConfig.customName,
-			index,
-			extension,
-		);
+		const filename = `${renameConfig.customName}-${index}${extension}`;
 		return path.join(outputDir, filename);
 	}
 
