@@ -3,3 +3,10 @@ input/*
 output/*
 !input/pierre-bamin-DO0lQFlzGeM-unsplash.jpg
 .cache/*
+.env 
+
+# Node.js
+.DS_Store
+coverage/
+.eslintcache
+*.log

@@ -1,106 +1,93 @@
-# Image Optimizer
+# Image Optimizer (Bun Native)
 
-A high-performance image optimization tool using [sharp](https://sharp.pixelplumbing.com/) with GPU acceleration support.
+An ultra-lean, high-performance image optimization tool built on [Bun's native Image API](https://bun.sh/docs/api/image). Zero external dependencies (no `node_modules`, no C++ compilation).
 
 ## Features
 
-- GPU acceleration for faster processing (NVIDIA CUDA & OpenCL support)
-- Optimized multi-threaded image processing
-- Batch processing with memory management
-- Support for multiple image formats (JPEG, PNG, WebP, AVIF)
-- Progress visualization
-- Detailed space-saving statistics
-- Result caching for repeated operations
+- **Blazing Fast:** Leverages Bun's built-in native image processing for incredible speed and zero overhead.
+- **Zero Dependencies:** No need for `sharp` or complex build tools.
+- **AI-Powered SEO Naming:** Automatically analyzes images using the Google Gemini API to generate descriptive `alt` text and SEO-friendly kebab-case filenames.
+- **Batch Processing:** Handles thousands of images optimally.
+- **Multiple Formats:** Support for JPEG, PNG, WebP, AVIF, and more.
 
 ## Prerequisites
 
-- Node.js (LTS version recommended)
-- For GPU acceleration:
-  - NVIDIA GPU with latest drivers (for CUDA support)
-  - Or any OpenCL-compatible GPU (AMD, Intel, etc.)
+- [Bun](https://bun.sh/) (Fast all-in-one JavaScript runtime)
+- (Optional) Google AI Studio API Key for AI renaming.
 
 ## Installation
 
-### Windows
-
-1. Install Node.js:
+1. Install Bun (Windows):
    ```sh
-   winget install "OpenJS.NodeJS.LTS"
+   powershell -c "irm bun.sh/install.ps1 | iex"
    ```
-
 2. Clone the repository:
    ```sh
    git clone https://github.com/sahillangoo/image-optimise-sharp.git
    cd image-optimise-sharp
    ```
-
-3. Install dependencies:
+3. Install dev-dependencies (Biome formatter):
    ```sh
-   npm install
+   bun install
    ```
 
 ## Usage
 
 1. Place images in the `input` directory.
-
 2. Run the compression script:
    ```sh
-   npm run compress
+   bun run compress
    ```
 
-   For maximum compression:
+### AI-Powered Renaming (SEO)
+
+To automatically rename your images based on their visual content and generate alt-text:
+
+1. Create a `.env` file in the root.
+2. Add your Gemini API key:
+   ```env
+   GEMINI_API_KEY="your-api-key-here"
+   ```
+3. Run the AI compress command:
    ```sh
-   npm run compress:extreme
+   bun run compress:ai
    ```
-
-   For faster processing with less compression:
-   ```sh
-   npm run compress:fast
-   ```
-
-3. Check the `output` folder for the processed images.
-
-## GPU Acceleration
-
-The script automatically detects and utilizes GPU capabilities:
-
-- NVIDIA GPUs: Uses CUDA acceleration when available
-- AMD/Intel GPUs: Uses OpenCL acceleration when available
-- Automatic fallback to CPU if GPU is not available or processing fails
-
-To disable GPU acceleration, set `useGPU: false` in the config object.
+This will output your processed images with SEO-friendly slugs (e.g., `snowy-mountain-peak.webp`) and generate an `seo-metadata.json` file in the output directory mapping the filenames to descriptive alt texts.
 
 ## Configuration
 
-You can configure the script by modifying the `config` object in [`index.mjs`](index.mjs):
+You can configure the script by modifying the `config` object in `index.mjs`:
 
 ```javascript
 const config = {
-  paths: {
-    input: path.resolve(process.cwd(), 'input'),
-    output: path.resolve(process.cwd(), 'output'),
-    cache: path.resolve(process.cwd(), '.cache'),
-  },
-  image: {
-    outputFormat: 'webp', // can be 'png', 'jpg', 'webp', 'avif'
-    compressionQuality: 85, // compression quality, 0-100
-    // ...other options
-  },
-  hardware: {
-    useGPU: true,               // Enable GPU acceleration if available
-    gpuDetection: true,         // Automatically detect GPU
-    fallbackToCPU: true,        // Fall back to CPU if GPU processing fails
-  },
-  // ...other options
+	paths: {
+		input: path.resolve(process.cwd(), "input"),
+		output: path.resolve(process.cwd(), "output"),
+	},
+	image: {
+		outputFormat: "webp", // "avif", "jpeg", "png"
+		resizeWidth: 1920,
+		resizeHeight: 1080,
+		compressionQuality: 85,
+		overwrite: true,
+	},
+	rename: {
+		enabled: true,
+		customName: "hotel-akbar-sonmarg", // Used as a fallback if AI is disabled
+		preserveOriginal: false,
+	},
 };
 ```
 
-## Performance Tips
+## Development & Linting
 
-- For NVIDIA GPUs, ensure you have the latest graphics drivers installed
-- For large image batches, the script will automatically manage memory usage
-- When processing thousands of images, use the cache feature for faster reprocessing
-- Delete the `.cache` directory or run `npm run clean` to clear cached results
+This project uses [Biome](https://biomejs.dev/) for extremely fast code formatting and linting.
+
+```sh
+bun run format  # Auto-format all code
+bun run lint    # Run the linter
+bun run check   # Run both format and lint checks
+```
 
 ## License
 
