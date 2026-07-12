@@ -95,7 +95,7 @@ const loadStateAndCache = async () => {
 const processImagePhase1 = async (inputPath, index) => {
 	try {
 		const inputBasename = path.basename(inputPath);
-		const inputKey = path.relative(config.paths.input, inputPath).split(path.sep).join('/');
+		const fileHash = Bun.hash(await Bun.file(inputPath).arrayBuffer()).toString(16);
 
 		let fallbackPath;
 		if (!config.rename.enabled || config.rename.preserveOriginal) {
@@ -119,7 +119,7 @@ const processImagePhase1 = async (inputPath, index) => {
 		if (!config.image.overwrite) {
 			try {
 				await fs.access(fallbackPath);
-				appState[inputKey] = path.basename(fallbackPath);
+				appState[fileHash] = path.basename(fallbackPath);
 				return { saved: 0, status: "skipped" };
 			} catch {}
 		}
@@ -153,7 +153,7 @@ const processImagePhase1 = async (inputPath, index) => {
 		await image.write(fallbackPath);
 
 		// Track current location of this input file
-		appState[inputKey] = path.basename(fallbackPath);
+		appState[fileHash] = path.basename(fallbackPath);
 
 		const initialSize = (await fs.stat(inputPath)).size;
 		const finalSize = (await fs.stat(fallbackPath)).size;
@@ -178,7 +178,7 @@ const processImagePhase1 = async (inputPath, index) => {
 };
 
 // PHASE 2: AI Rename a compressed image
-const processImagePhase2 = async (inputKey, currentBasename) => {
+const processImagePhase2 = async (fileHash, currentBasename) => {
 	try {
 		const currentPath = path.join(config.paths.output, currentBasename);
 
@@ -194,11 +194,11 @@ const processImagePhase2 = async (inputKey, currentBasename) => {
 		let aiAlt = null;
 		let outputBasename = currentBasename;
 
-		if (!forceRename && globalSeoMetadata[inputKey]?.output) {
+		if (!forceRename && globalSeoMetadata[fileHash]?.output) {
 			// Cached
-			outputBasename = globalSeoMetadata[inputKey].output;
+			outputBasename = globalSeoMetadata[fileHash].output;
 			console.log(
-				chalk.gray(`Skipping AI. Found cached rename for ${inputKey}`),
+				chalk.gray(`Skipping AI. Found cached rename for ${fileHash.substring(0, 8)}...`),
 			);
 		} else {
 			// Needs AI
@@ -218,7 +218,7 @@ const processImagePhase2 = async (inputKey, currentBasename) => {
 				outputBasename = path.basename(finalPath);
 
 				// Cache it
-				globalSeoMetadata[inputKey] = {
+				globalSeoMetadata[fileHash] = {
 					output: outputBasename,
 					alt: aiAlt,
 				};
@@ -236,13 +236,13 @@ const processImagePhase2 = async (inputKey, currentBasename) => {
 			const finalPath = path.join(config.paths.output, outputBasename);
 			await fs.rename(currentPath, finalPath);
 			// Update state Tracker so future runs know where this file went!
-			appState[inputKey] = outputBasename;
+			appState[fileHash] = outputBasename;
 			console.log(chalk.green(`Renamed -> ${outputBasename}`));
 			return true;
 		}
 		return false;
 	} catch (err) {
-		console.error(chalk.red(`AI Rename Error for ${inputKey}: ${err.message}`));
+		console.error(chalk.red(`AI Rename Error for ${fileHash.substring(0, 8)}...: ${err.message}`));
 		return false;
 	}
 };
@@ -325,8 +325,8 @@ const run = async () => {
 				);
 
 				let alreadyRenamed = 0;
-				for (const [inputKey] of stateEntries) {
-					if (!forceRename && globalSeoMetadata[inputKey]?.output) {
+				for (const [fileHash] of stateEntries) {
+					if (!forceRename && globalSeoMetadata[fileHash]?.output) {
 						alreadyRenamed++;
 					}
 				}
@@ -339,8 +339,8 @@ const run = async () => {
 
 				// Local AI tokens process sequentially
 				let newlyRenamed = 0;
-				for (const [inputKey, currentBasename] of stateEntries) {
-					const renamed = await processImagePhase2(inputKey, currentBasename);
+				for (const [fileHash, currentBasename] of stateEntries) {
+					const renamed = await processImagePhase2(fileHash, currentBasename);
 					if (renamed) newlyRenamed++;
 				}
 
