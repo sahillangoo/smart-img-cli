@@ -3,10 +3,11 @@ Image Processing Script for Bun
 Author: @sahillangoo
 Functions:
 - Recursively scan a directory for images
-- Process each image using Bun's native Image API
-- AI-Powered SEO Naming via Google Gemini API (when run with --ai)
-- Resize, convert, and compress images
-- Display the space saved and processing time
+- Phase 1 (--compress): High-speed compression using Bun's native Image API (Max Concurrency)
+- Phase 2 (--rename): Asynchronous Local AI-Powered SEO Naming via LM Studio (Sequential)
+- Phase Tracking: Uses state.json to map inputs to outputs for decoupled processing.
+
+🐎 Ponytail: Ultra-lean. Local execution, no rate limits, completely decoupled phases.
 */
 
 import { promises as fs } from "node:fs";
@@ -14,50 +15,37 @@ import { cpus } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import chalk from "chalk";
+
+import config from "./config.json";
 import { FilenameTracker, createRenamedPath } from "./scripts/rename.mjs";
+import { getSEOMetadata } from "./scripts/ai.mjs";
 
-const useAI = process.argv.includes("--ai");
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const isGeminiEnabled =
-	useAI && GEMINI_API_KEY && GEMINI_API_KEY !== "paste_your_key_here";
+const runCompress =
+	process.argv.includes("--compress") ||
+	process.argv.includes("--all") ||
+	(!process.argv.includes("--compress") && !process.argv.includes("--rename"));
+const runRename =
+	process.argv.includes("--rename") ||
+	process.argv.includes("--all") ||
+	(!process.argv.includes("--compress") && !process.argv.includes("--rename"));
 
-if (useAI && !isGeminiEnabled) {
-	console.error(chalk.red("Error: --ai flag provided but GEMINI_API_KEY is missing or invalid in .env"));
-	process.exit(1);
-}
+const forceRename =
+	process.argv.includes("--force-rename") ||
+	process.argv.includes("--rename-force");
 
-const config = {
-	paths: {
-		input: path.resolve(process.cwd(), "input"),
-		output: path.resolve(process.cwd(), "output"),
-	},
-	image: {
-		outputFormat: "webp",
-		resizeWidth: 1920,
-		resizeHeight: 1080,
-		compressionQuality: 85,
-		overwrite: true,
-		supportedFormats: [
-			".jpg",
-			".jpeg",
-			".png",
-			".webp",
-			".tiff",
-			".avif",
-			".gif",
-		],
-	},
-	rename: {
-		enabled: true,
-		customName: "hotel-akbar-sonmarg",
-		preserveOriginal: false,
-	},
-	// To avoid hitting 15 RPM limit on Gemini Free Tier, process sequentially if enabled
-	concurrency: isGeminiEnabled ? 1 : Math.max(1, cpus().length),
-};
+// Overwrite config paths to be absolute based on CWD
+config.paths.input = path.resolve(process.cwd(), config.paths.input);
+config.paths.output = path.resolve(process.cwd(), config.paths.output);
+config.paths.state = path.join(config.paths.output, config.paths.state);
+config.paths.cache = path.join(config.paths.output, config.paths.cache);
+config.concurrency = Math.max(1, cpus().length);
 
 const filenameTracker = new FilenameTracker();
-const globalSeoMetadata = {};
+const aiFilenameTracker = new FilenameTracker();
+
+// Global State Caches
+let globalSeoMetadata = {};
+let appState = {};
 
 const formatBytes = (bytes) => {
 	if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
@@ -85,113 +73,55 @@ const scanDirectory = async (dir) => {
 	}
 };
 
-const getSEOMetadata = async (inputPath) => {
-	if (!isGeminiEnabled) return null;
+const loadStateAndCache = async () => {
 	try {
-		const b64 = await Bun.file(inputPath)
-			.image()
-			.resize(512, 512, { fit: "inside" })
-			.jpeg({ quality: 60 })
-			.toBase64();
-		const body = {
-			contents: [
-				{
-					parts: [
-						{
-							text: "Analyze this image and return a strict JSON object with two fields: 'slug' (a 3-5 word kebab-case string representing the image contents, e.g. 'snowy-mountain-peak') and 'alt' (a descriptive alt text sentence for visually impaired users).",
-						},
-						{ inline_data: { mime_type: "image/jpeg", data: b64 } },
-					],
-				},
-			],
-			generationConfig: { response_mime_type: "application/json" },
-		};
-
-		const res = await fetch(
-			`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
-			},
-		);
-
-		if (!res.ok)
-			throw new Error(`API Error ${res.status}: ${await res.text()}`);
-
-		const data = await res.json();
-		const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-		if (text) return JSON.parse(text);
-	} catch (err) {
-		console.error(
-			chalk.yellow(
-				`AI Naming failed for ${path.basename(inputPath)}: ${err.message}`,
-			),
-		);
-	}
-	return null;
-};
-
-const createOutputPath = (inputPath, index, aiSlug) => {
-	if (aiSlug) {
-		const desiredPath = path.join(
-			config.paths.output,
-			`${aiSlug}.${config.image.outputFormat}`,
-		);
-		return filenameTracker.getUniquePath(desiredPath); // Ensure uniqueness
-	}
-
-	if (!config.rename.enabled || config.rename.preserveOriginal) {
-		return path.join(
-			config.paths.output,
-			`${path.parse(path.basename(inputPath)).name}.${config.image.outputFormat}`,
-		);
-	}
-	const desiredPath = createRenamedPath(
-		inputPath,
-		config.paths.output,
-		config.image.outputFormat,
-		config.rename,
-		index,
-	);
-	if (!config.rename.customName && config.rename.enabled) {
-		return filenameTracker.getUniquePath(desiredPath);
-	}
-	return desiredPath;
-};
-
-const processImage = async (inputPath, index) => {
-	try {
-		const start = performance.now();
-
-		let aiSlug = null;
-		let aiAlt = null;
-
-		if (isGeminiEnabled) {
-			console.log(
-				chalk.gray(`Analyzing ${path.basename(inputPath)} with Gemini...`),
-			);
-			const metadata = await getSEOMetadata(inputPath);
-			if (metadata?.slug) {
-				aiSlug = metadata.slug;
-				aiAlt = metadata.alt;
-			}
+		const existingMeta = await fs.readFile(config.paths.cache, "utf-8");
+		const parsed = JSON.parse(existingMeta);
+		if (
+			Object.keys(parsed).length > 0 &&
+			typeof Object.values(parsed)[0] === "object"
+		) {
+			globalSeoMetadata = parsed;
 		}
+	} catch {} // ignore missing cache
 
-		const outputPath = createOutputPath(inputPath, index, aiSlug);
+	try {
+		const existingState = await fs.readFile(config.paths.state, "utf-8");
+		appState = JSON.parse(existingState);
+	} catch {} // ignore missing state
+};
+
+// PHASE 1: Compress an image
+const processImagePhase1 = async (inputPath, index) => {
+	try {
+		const inputBasename = path.basename(inputPath);
+		const inputKey = path.relative(config.paths.input, inputPath).split(path.sep).join('/');
+
+		let fallbackPath;
+		if (!config.rename.enabled || config.rename.preserveOriginal) {
+			fallbackPath = path.join(
+				config.paths.output,
+				`${path.parse(inputBasename).name}.${config.image.outputFormat}`,
+			);
+		} else {
+			const desiredPath = createRenamedPath(
+				inputPath,
+				config.paths.output,
+				config.image.outputFormat,
+				config.rename,
+				index,
+			);
+			fallbackPath = !config.rename.customName
+				? filenameTracker.getUniquePath(desiredPath)
+				: desiredPath;
+		}
 
 		if (!config.image.overwrite) {
 			try {
-				await fs.access(outputPath);
-				console.log(
-					chalk.yellow(
-						`Image already exists, skipping: ${path.basename(outputPath)}`,
-					),
-				);
-				return 0;
-			} catch {
-				// File does not exist, proceed
-			}
+				await fs.access(fallbackPath);
+				appState[inputKey] = path.basename(fallbackPath);
+				return { saved: 0, status: "skipped" };
+			} catch {}
 		}
 
 		let image = Bun.file(inputPath).image();
@@ -200,9 +130,7 @@ const processImage = async (inputPath, index) => {
 			image = image.resize(
 				config.image.resizeWidth,
 				config.image.resizeHeight,
-				{
-					fit: "inside",
-				},
+				{ fit: "inside" },
 			);
 		}
 
@@ -222,110 +150,215 @@ const processImage = async (inputPath, index) => {
 				break;
 		}
 
-		await image.write(outputPath);
+		await image.write(fallbackPath);
 
-		if (aiSlug && aiAlt) {
-			globalSeoMetadata[path.basename(outputPath)] = aiAlt;
-		}
+		// Track current location of this input file
+		appState[inputKey] = path.basename(fallbackPath);
 
 		const initialSize = (await fs.stat(inputPath)).size;
-		const finalSize = (await fs.stat(outputPath)).size;
+		const finalSize = (await fs.stat(fallbackPath)).size;
 		const spaceSaved = initialSize - finalSize;
 		const percentSaved = ((spaceSaved / initialSize) * 100).toFixed(2);
-		const timeTaken = (performance.now() - start).toFixed(2);
-
-		console.log(
-			chalk.green(`Processed: ${path.basename(outputPath)} in ${timeTaken}ms`),
-		);
-		console.log(
-			`Compressed: ${formatBytes(initialSize)} ==> ${formatBytes(finalSize)} (${percentSaved}% saved) 🔥`,
-		);
-
-		// Respect Free Tier Rate limits (15 RPM -> 1 request per 4s)
-		if (isGeminiEnabled) {
-			await new Promise((r) => setTimeout(r, 4000));
-		}
-
-		return spaceSaved;
-	} catch (err) {
-		console.error(
-			chalk.red(`Error processing ${path.basename(inputPath)}: ${err.message}`),
-		);
-		return 0;
-	}
-};
-
-const processBatch = async (files) => {
-	const chunks = [];
-	for (let i = 0; i < files.length; i += config.concurrency) {
-		chunks.push(files.slice(i, i + config.concurrency));
-	}
-
-	let totalSaved = 0;
-	let index = 1;
-	for (let i = 0; i < chunks.length; i++) {
-		console.log(
-			chalk.blue(
-				`Processing batch ${i + 1}/${chunks.length} (${chunks[i].length} images)`,
-			),
-		);
-		const promises = chunks[i].map(async (file) => {
-			const saved = await processImage(file, index++);
-			return saved;
-		});
-		const results = await Promise.all(promises);
-		totalSaved += results.reduce((acc, val) => acc + val, 0);
-		if (global.gc) global.gc();
-	}
-	return totalSaved;
-};
-
-const run = async () => {
-	console.time("Total processing time");
-	try {
-		await fs.mkdir(config.paths.output, { recursive: true });
-
-		console.log(chalk.blue(`Scanning input directory: ${config.paths.input}`));
-		const files = await scanDirectory(config.paths.input);
-
-		if (files.length === 0) {
-			console.log(chalk.yellow("No image files found in the input directory."));
-			return;
-		}
-
-		console.log(
-			chalk.blue(`Found ${files.length} image files for processing.`),
-		);
-		if (isGeminiEnabled) {
-			console.log(
-				chalk.cyan(
-					"Gemini AI SEO Naming ENABLED! (Rate-limited to 15 RPM for free tier)",
-				),
-			);
-		}
-		console.log(chalk.blue(`Using concurrency limit of ${config.concurrency}`));
-
-		const totalSpaceSaved = await processBatch(files);
-
-		if (Object.keys(globalSeoMetadata).length > 0) {
-			const metaPath = path.join(config.paths.output, "seo-metadata.json");
-			await fs.writeFile(metaPath, JSON.stringify(globalSeoMetadata, null, 2));
-			console.log(
-				chalk.cyan(
-					`✅ Saved SEO metadata for ${Object.keys(globalSeoMetadata).length} images to ${metaPath}`,
-				),
-			);
-		}
 
 		console.log(
 			chalk.green(
-				`\n🎉 All done! ${files.length} files processed successfully.`,
+				`Compressed: ${formatBytes(initialSize)} ==> ${formatBytes(finalSize)} (${percentSaved}% saved) 🔥`,
 			),
 		);
-		console.log(
-			chalk.green(`Total space saved: ${formatBytes(totalSpaceSaved)}`),
+
+		return { saved: spaceSaved, status: "success" };
+	} catch (err) {
+		console.error(
+			chalk.red(
+				`Error compressing ${path.basename(inputPath)}: ${err.message}`,
+			),
 		);
-		console.timeEnd("Total processing time");
+		return { saved: 0, status: "error" };
+	}
+};
+
+// PHASE 2: AI Rename a compressed image
+const processImagePhase2 = async (inputKey, currentBasename) => {
+	try {
+		const currentPath = path.join(config.paths.output, currentBasename);
+
+		// Verify file still exists
+		try {
+			await fs.access(currentPath);
+		} catch {
+			console.log(chalk.red(`File missing: ${currentBasename}`));
+			return;
+		}
+
+		let aiSlug = null;
+		let aiAlt = null;
+		let outputBasename = currentBasename;
+
+		if (!forceRename && globalSeoMetadata[inputKey]?.output) {
+			// Cached
+			outputBasename = globalSeoMetadata[inputKey].output;
+			console.log(
+				chalk.gray(`Skipping AI. Found cached rename for ${inputKey}`),
+			);
+		} else {
+			// Needs AI
+			console.log(chalk.gray(`Analyzing ${currentBasename} with AI...`));
+			const metadata = await getSEOMetadata(currentPath);
+
+			if (metadata?.slug) {
+				aiSlug = metadata.slug;
+				aiAlt = metadata.alt;
+
+				// Generate new unique slug filename
+				const desiredPath = path.join(
+					config.paths.output,
+					`${aiSlug}.${config.image.outputFormat}`,
+				);
+				const finalPath = aiFilenameTracker.getUniquePath(desiredPath);
+				outputBasename = path.basename(finalPath);
+
+				// Cache it
+				globalSeoMetadata[inputKey] = {
+					output: outputBasename,
+					alt: aiAlt,
+				};
+			} else {
+				console.log(
+					chalk.yellow(
+						`AI Naming failed. Keeping current name: ${outputBasename}`,
+					),
+				);
+			}
+		}
+
+		// Rename the file if the AI gave it a new name (or if we fetched a new name from cache)
+		if (outputBasename !== currentBasename) {
+			const finalPath = path.join(config.paths.output, outputBasename);
+			await fs.rename(currentPath, finalPath);
+			// Update state Tracker so future runs know where this file went!
+			appState[inputKey] = outputBasename;
+			console.log(chalk.green(`Renamed -> ${outputBasename}`));
+			return true;
+		}
+		return false;
+	} catch (err) {
+		console.error(chalk.red(`AI Rename Error for ${inputKey}: ${err.message}`));
+		return false;
+	}
+};
+
+const run = async () => {
+	try {
+		await fs.mkdir(config.paths.output, { recursive: true });
+		await loadStateAndCache();
+
+		if (runCompress) {
+			console.time("Phase 1: Compression Time");
+			console.log(
+				chalk.blue(`Scanning input directory: ${config.paths.input}`),
+			);
+			const files = await scanDirectory(config.paths.input);
+
+			if (files.length === 0) {
+				console.log(
+					chalk.yellow("No image files found in the input directory."),
+				);
+			} else {
+				console.log(
+					chalk.blue(
+						`Phase 1: Compressing ${files.length} images (Concurrency: ${config.concurrency})...`,
+					),
+				);
+
+				const chunks = [];
+				for (let i = 0; i < files.length; i += config.concurrency) {
+					chunks.push(files.slice(i, i + config.concurrency));
+				}
+
+				let totalSaved = 0;
+				let index = 1;
+
+				for (let i = 0; i < chunks.length; i++) {
+					const promises = chunks[i].map(async (file) => {
+						const res = await processImagePhase1(file, index++);
+						return res.saved;
+					});
+					const results = await Promise.all(promises);
+					totalSaved += results.reduce((acc, val) => acc + val, 0);
+					if (global.gc) global.gc();
+				}
+
+				// Save state after compression so renaming phase knows what to target
+				await fs.writeFile(
+					config.paths.state,
+					JSON.stringify(appState, null, 2),
+				);
+
+				console.log(
+					chalk.green(
+						`\n🎉 Phase 1 Complete! ${files.length} files compressed.`,
+					),
+				);
+				console.log(
+					chalk.green(`Total space saved: ${formatBytes(totalSaved)}`),
+				);
+				console.timeEnd("Phase 1: Compression Time");
+				console.log(
+					chalk.cyan("Your images are ready to use in the output folder!"),
+				);
+			}
+		}
+
+		if (runRename) {
+			const stateEntries = Object.entries(appState);
+			if (stateEntries.length === 0) {
+				console.log(
+					chalk.yellow(
+						"No compressed images found in state.json. Run --compress first.",
+					),
+				);
+			} else {
+				console.log(
+					chalk.magenta(
+						`\n🤖 Phase 2: Starting AI Renaming (Press Ctrl+C to cancel if you don't want to wait)...`,
+					),
+				);
+
+				let alreadyRenamed = 0;
+				for (const [inputKey] of stateEntries) {
+					if (!forceRename && globalSeoMetadata[inputKey]?.output) {
+						alreadyRenamed++;
+					}
+				}
+				const pending = stateEntries.length - alreadyRenamed;
+				console.log(
+					chalk.cyan(
+						`📊 Status: ${stateEntries.length} total | ${alreadyRenamed} cached | ${pending} pending AI renaming`,
+					),
+				);
+
+				// Local AI tokens process sequentially
+				let newlyRenamed = 0;
+				for (const [inputKey, currentBasename] of stateEntries) {
+					const renamed = await processImagePhase2(inputKey, currentBasename);
+					if (renamed) newlyRenamed++;
+				}
+
+				// Save cache and state
+				if (Object.keys(globalSeoMetadata).length > 0) {
+					await fs.writeFile(
+						config.paths.cache,
+						JSON.stringify(globalSeoMetadata, null, 2),
+					);
+					await fs.writeFile(
+						config.paths.state,
+						JSON.stringify(appState, null, 2),
+					);
+					console.log(chalk.cyan(`✅ Saved SEO metadata to ${config.paths.cache}`));
+				}
+				console.log(chalk.magenta(`🤖 Phase 2 Complete! ${newlyRenamed} images were successfully renamed this run.`));
+			}
+		}
 	} catch (err) {
 		console.error(chalk.red(`Fatal error: ${err.message}`));
 	}

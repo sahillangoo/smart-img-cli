@@ -1,94 +1,59 @@
-# Image Optimizer (Bun Native)
+# Image Optimise Sharp
 
-An ultra-lean, high-performance image optimization tool built on [Bun's native Image API](https://bun.sh/docs/api/image). Zero external dependencies (no `node_modules`, no C++ compilation).
+A blazing-fast, ultra-lean local CLI tool for bulk compressing and optimising images, natively powered by Bun's C++ Image API and local AI (LM Studio).
 
-## Features
+## 🚀 Features
 
-- **Blazing Fast:** Leverages Bun's built-in native image processing for incredible speed and zero overhead.
-- **Zero Dependencies:** No need for `sharp` or complex build tools.
-- **AI-Powered SEO Naming:** Automatically analyzes images using the Google Gemini API to generate descriptive `alt` text and SEO-friendly kebab-case filenames.
-- **Batch Processing:** Handles thousands of images optimally.
-- **Multiple Formats:** Support for JPEG, PNG, WebP, AVIF, and more.
+- **Blazing Fast**: Compresses hundreds of images in seconds using maximum CPU concurrency.
+- **Local AI SEO Renaming**: Automatically rename images based on visual contents (e.g. `snowy-mountain.webp`) using local vision models (zero cost, zero rate limits).
+- **Decoupled Architecture**: Run compression and renaming phases independently!
+- **Zero-Config Ready**: Comes with a `config.json` that is fully tweakable without diving into code.
 
-## Prerequisites
+## 📦 Installation
 
-- [Bun](https://bun.sh/) (Fast all-in-one JavaScript runtime)
-- (Optional) Google AI Studio API Key for AI renaming.
-
-## Installation
-
-1. Install Bun (Windows):
-   ```sh
-   powershell -c "irm bun.sh/install.ps1 | iex"
-   ```
-2. Clone the repository:
-   ```sh
-   git clone https://github.com/sahillangoo/image-optimise-sharp.git
-   cd image-optimise-sharp
-   ```
-3. Install dev-dependencies (Biome formatter):
-   ```sh
-   bun install
-   ```
-
-## Usage
-
-1. Place images in the `input` directory.
-2. Run the compression script:
-   ```sh
-   bun run compress
-   ```
-
-### AI-Powered Renaming (SEO)
-
-To automatically rename your images based on their visual content and generate alt-text:
-
-1. Create a `.env` file in the root.
-2. Add your Gemini API key:
-   ```env
-   GEMINI_API_KEY="your-api-key-here"
-   ```
-3. Run the AI compress command:
-   ```sh
-   bun run compress:ai
-   ```
-This will output your processed images with SEO-friendly slugs (e.g., `snowy-mountain-peak.webp`) and generate an `seo-metadata.json` file in the output directory mapping the filenames to descriptive alt texts.
-
-## Configuration
-
-You can configure the script by modifying the `config` object in `index.mjs`:
-
-```javascript
-const config = {
-	paths: {
-		input: path.resolve(process.cwd(), "input"),
-		output: path.resolve(process.cwd(), "output"),
-	},
-	image: {
-		outputFormat: "webp", // "avif", "jpeg", "png"
-		resizeWidth: 1920,
-		resizeHeight: 1080,
-		compressionQuality: 85,
-		overwrite: true,
-	},
-	rename: {
-		enabled: true,
-		customName: "hotel-akbar-sonmarg", // Used as a fallback if AI is disabled
-		preserveOriginal: false,
-	},
-};
+```bash
+git clone https://github.com/sahillangoo/image-optimise-sharp.git
+cd image-optimise-sharp
+bun install
 ```
 
-## Development & Linting
+## 🛠️ Usage
 
-This project uses [Biome](https://biomejs.dev/) for extremely fast code formatting and linting.
+Place your original images in the `input/` directory.
 
-```sh
-bun run format  # Auto-format all code
-bun run lint    # Run the linter
-bun run check   # Run both format and lint checks
+### 1. Basic Compression (Phase 1)
+To only run high-speed compression without renaming:
+```bash
+bun run compress
 ```
+This instantly compresses images and dumps them into `output/`.
+
+### 2. AI SEO Renaming (Phase 2)
+If you've already compressed images and want to run the local AI to rename them based on visual content:
+```bash
+bun run rename
+```
+*(Requires LM Studio running locally with a vision model loaded).*
+
+### 3. Full Pipeline (Compression + Renaming)
+To run compression and instantly follow it up with AI renaming:
+```bash
+bun run all
+```
+
+## ⚙️ Configuration (`config.json`)
+All settings—including image resizing, output formats, and **AI Prompts**—are located in `config.json`. 
+
+You can easily adjust the AI's system prompt to give it context about your specific images (e.g., *"These are real estate photos in Kashmir"*) without touching the JavaScript code!
+
+## 📜 Scripts
+
+- `bun run compress`: Run phase 1 (Compression)
+- `bun run rename`: Run phase 2 (AI SEO Naming - ignores cached images)
+- `bun run rename:force`: Run phase 2 but force re-generation for all images
+- `bun run all`: Run both phases.
+- `bun run lint`: Run Biome linter.
 
 ## License
 
-This project is licensed under the ISC License.
+MIT

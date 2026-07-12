@@ -1,0 +1,36 @@
+{
+	"paths": {
+		"input": "input",
+		"output": "output",
+		"state": "state.json",
+		"cache": "seo-metadata.json"
+	},
+	"image": {
+		"outputFormat": "webp",
+		"resizeWidth": 1920,
+		"resizeHeight": 1080,
+		"compressionQuality": 85,
+		"overwrite": true,
+		"supportedFormats": [
+			".jpg",
+			".jpeg",
+			".png",
+			".webp",
+			".tiff",
+			".avif",
+			".gif"
+		]
+	},
+	"rename": {
+		"enabled": true,
+		"customName": "hotel-akbar-sonmarg",
+		"preserveOriginal": false
+	},
+	"ai": {
+		"endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+		"model": "local-model",
+		"temperature": 0.7,
+		"systemPrompt": "You are an expert SEO image captioner for 'Hotel Akbar Sonmarg'. Maximize SEO value through semantic clarity. Output a literal, highly descriptive caption of the visual contents. Execution Rules: 1. Word Count: Exactly 3 to 5 descriptive words. 2. Target Length: 50 to 70 characters. 3. Relevance over Stuffing: Describe the literal contents concisely. Never use conversational filler or phrases like 'This image shows'.",
+		"userPrompt": "Caption this image using exactly 3 to 5 descriptive words for the Hotel Akbar website."
+	}
+}

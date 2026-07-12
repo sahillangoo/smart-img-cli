@@ -9,10 +9,10 @@
 		"url": "https://github.com/sahillangoo/image-optimise-sharp.git"
 	},
 	"scripts": {
-		"compress": "bun index.mjs",
-		"compress:ai": "bun index.mjs --ai",
-		"compress:fast": "bun index.mjs --fast",
-		"compress:extreme": "bun index.mjs --extreme",
+		"compress": "bun index.mjs --compress",
+		"rename": "bun index.mjs --rename",
+		"rename:force": "bun index.mjs --rename --force-rename",
+		"all": "bun index.mjs --all",
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"check": "biome check --write .",
