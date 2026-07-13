@@ -1,12 +1,12 @@
 {
-	"name": "image-optimise-sharp",
+	"name": "smart-img-cli",
 	"version": "1.0.0",
-	"description": "High-performance image optimization tool with functional programming approach",
+	"description": "Lightning-fast image compression and local AI-powered SEO renaming, built on Bun and LM Studio.",
 	"main": "index.mjs",
 	"type": "module",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/sahillangoo/image-optimise-sharp.git"
+		"url": "https://github.com/sahillangoo/smart-img-cli.git"
 	},
 	"scripts": {
 		"compress": "bun index.mjs --compress",
@@ -20,7 +20,7 @@
 	},
 	"keywords": ["image", "optimization", "compression", "sharp", "webp", "avif"],
 	"author": "@sahillangoo",
-	"license": "ISC",
+	"license": "MIT",
 	"dependencies": {
 		"chalk": "^5.6.2"
 	},
