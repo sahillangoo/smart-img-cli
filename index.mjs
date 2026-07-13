@@ -174,7 +174,7 @@ const processImagePhase1 = async (inputPath, index) => {
 };
 
 // PHASE 2: AI Rename a compressed image
-const processImagePhase2 = async (fileHash, currentBasename) => {
+const processImagePhase2 = async (fileHash, currentBasename, progress) => {
 	try {
 		const currentPath = path.join(config.paths.output, currentBasename);
 
@@ -195,12 +195,12 @@ const processImagePhase2 = async (fileHash, currentBasename) => {
 			outputBasename = globalSeoMetadata[fileHash].output;
 			console.log(
 				chalk.gray(
-					`Skipping AI. Found cached rename for ${fileHash.substring(0, 8)}...`,
+					`[${++progress.current}/${progress.total}] Skipping AI. Found cached rename for ${fileHash.substring(0, 8)}...`,
 				),
 			);
 		} else {
 			// Needs AI
-			console.log(chalk.gray(`Analyzing ${currentBasename} with AI...`));
+			console.log(chalk.gray(`[${++progress.current}/${progress.total}] Analyzing ${currentBasename} with AI...`));
 			const metadata = await getSEOMetadata(currentPath);
 
 			if (metadata?.slug) {
@@ -339,11 +339,24 @@ const run = async () => {
 					),
 				);
 
-				// Local AI tokens process sequentially
+				// Process AI renaming with concurrency
+				const aiConcurrency = config.ai.concurrency || Math.min(4, config.concurrency);
+				console.log(chalk.blue(`Processing with AI Concurrency: ${aiConcurrency}`));
+				
 				let newlyRenamed = 0;
-				for (const [fileHash, currentBasename] of stateEntries) {
-					const renamed = await processImagePhase2(fileHash, currentBasename);
-					if (renamed) newlyRenamed++;
+				const progress = { current: 0, total: stateEntries.length };
+				const chunks = [];
+				for (let i = 0; i < stateEntries.length; i += aiConcurrency) {
+					chunks.push(stateEntries.slice(i, i + aiConcurrency));
+				}
+
+				for (let i = 0; i < chunks.length; i++) {
+					const promises = chunks[i].map(async ([fileHash, currentBasename]) => {
+						const renamed = await processImagePhase2(fileHash, currentBasename, progress);
+						return renamed ? 1 : 0;
+					});
+					const results = await Promise.all(promises);
+					newlyRenamed += results.reduce((acc, val) => acc + val, 0);
 				}
 
 				// Save cache and state
