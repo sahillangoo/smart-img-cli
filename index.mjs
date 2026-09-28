@@ -200,7 +200,11 @@ const processImagePhase2 = async (fileHash, currentBasename, progress) => {
 			);
 		} else {
 			// Needs AI
-			console.log(chalk.gray(`[${++progress.current}/${progress.total}] Analyzing ${currentBasename} with AI...`));
+			console.log(
+				chalk.gray(
+					`[${++progress.current}/${progress.total}] Analyzing ${currentBasename} with AI...`,
+				),
+			);
 			const metadata = await getSEOMetadata(currentPath);
 
 			if (metadata?.slug) {
@@ -340,9 +344,12 @@ const run = async () => {
 				);
 
 				// Process AI renaming with concurrency
-				const aiConcurrency = config.ai.concurrency || Math.min(4, config.concurrency);
-				console.log(chalk.blue(`Processing with AI Concurrency: ${aiConcurrency}`));
-				
+				const aiConcurrency =
+					config.ai.concurrency || Math.min(4, config.concurrency);
+				console.log(
+					chalk.blue(`Processing with AI Concurrency: ${aiConcurrency}`),
+				);
+
 				let newlyRenamed = 0;
 				const progress = { current: 0, total: stateEntries.length };
 				const chunks = [];
@@ -351,10 +358,16 @@ const run = async () => {
 				}
 
 				for (let i = 0; i < chunks.length; i++) {
-					const promises = chunks[i].map(async ([fileHash, currentBasename]) => {
-						const renamed = await processImagePhase2(fileHash, currentBasename, progress);
-						return renamed ? 1 : 0;
-					});
+					const promises = chunks[i].map(
+						async ([fileHash, currentBasename]) => {
+							const renamed = await processImagePhase2(
+								fileHash,
+								currentBasename,
+								progress,
+							);
+							return renamed ? 1 : 0;
+						},
+					);
 					const results = await Promise.all(promises);
 					newlyRenamed += results.reduce((acc, val) => acc + val, 0);
 				}
